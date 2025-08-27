@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "127.0.0.1",
     //host:true,
-    port: 5001,
+    port: 4001,
     proxy: {
       '/api/v1': {
         target: 'https://wc-backend.zetrance.com',
