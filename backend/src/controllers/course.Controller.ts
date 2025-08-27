@@ -923,7 +923,7 @@ export const publishCourse = asyncHandler(async (req: Request, res: Response) =>
             ? 'Course published successfully' 
             : 'Course unpublished successfully';
 
-            const link = `https://wb-avatar.zetrance.com/course/${courseId}/${accessToken}`
+            const link = `https://wc-avatar.zetrance.com/course/${courseId}/${accessToken}`
            
         return new ApiResponse(200, {
             course: {
@@ -1058,7 +1058,7 @@ export const getAdminCourses = asyncHandler(async (req: Request, res: Response) 
   courses = courses.map((course: any) => {
         const courseObj = course.toObject();
         if (course.status === 'published') {
-            courseObj.courseLink = `https://wb-avatar.zetrance.com/course/${course._id}/${accessToken}`;
+            courseObj.courseLink = `https://wc-avatar.zetrance.com/course/${course._id}/${accessToken}`;
         }
         return courseObj;
     }).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
