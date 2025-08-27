@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => ({
         // No rewrite needed since your frontend matches the backend path
       },
     },
-    //allowedHosts: ['.ngrok-free.app'],
+    allowedHosts: ["wc.zetrance.com"],
   },
   plugins: [
     react(),
