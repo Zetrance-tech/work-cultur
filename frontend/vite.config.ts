@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
-
+/*
 /*
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => ({
 export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
-    //host:true,
+
     port: 5001,
     proxy: {
       '/api/v1': {
@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => ({
         // No rewrite needed since your frontend matches the backend path
       },
     },
-    //allowedHosts: ['.ngrok-free.app'],
+    allowedHosts: ["wc.zetrance.com"],
   },
   plugins: [
     react(),
