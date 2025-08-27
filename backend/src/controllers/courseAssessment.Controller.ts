@@ -1,0 +1,1219 @@
+import { Request, Response } from 'express';
+import asyncHandler from '@/utils/asyncHandler.utils';
+import ApiError from '@/utils/apiError.utils';
+import ApiResponse from '@/utils/apiResponse.utils';
+import CourseModel from '@/models/course.model';
+import assessmentsModel from '@/models/assessments.model';
+import QuestionModel from '@/models/question.model';
+import { IAssessmentCreation } from '@/types';
+import OrganizationModel from '@/models/organization.model';
+import TopicModel from '@/models/topic.model';
+import SubtopicModel from '@/models/subtopic.model';
+import mongoose, { ObjectId, startSession, Types } from 'mongoose';
+import { any } from 'zod';
+import { IQuestion, Iassessments } from '@/types';
+import { Document } from 'mongoose';
+import userAnswerModel from '@/models/userAnswer.model';
+import courseModel from '@/models/course.model';
+
+
+
+import { ICourse, ITopic, ISubtopic } from '../types'; // Adjust path to your types
+
+
+const saveCourseAssessments = async (req: Request, res: Response) => {
+    try {
+      const { courseId, topicId, subtopics } = req.body;
+      console.log("entering saveCourseAssessments------>");
+  
+      // Validate request body
+      if (!courseId || !topicId || !subtopics || !Array.isArray(subtopics) || subtopics.length !== 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid request body. Expected courseId, topicId, and a single subtopic.",
+        });
+      }
+  
+      const subtopic = subtopics[0];
+      if (!subtopic.subtopicId || !subtopic.assessments || !Array.isArray(subtopic.assessments) || subtopic.assessments.length !== 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid subtopic data. Expected subtopicId and exactly one assessment.",
+        });
+      }
+  
+      // Validate the single assessment
+      const assessmentData = subtopic.assessments[0];
+      if (!assessmentData.title || typeof assessmentData.title !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Assessment must have a title (string).",
+        });
+      }
+      if (assessmentData.description && typeof assessmentData.description !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Assessment description must be a string if provided.",
+        });
+      }
+  
+      // Find the course and populate topics and subtopics
+      const course = await courseModel
+        .findById(courseId)
+        .populate({
+          path: 'topics',
+          populate: {
+            path: 'subtopics',
+            model: 'Subtopic',
+          },
+        }) as ICourse;
+  
+      if (!course) {
+        return res.status(404).json({
+          success: false,
+          message: "Course not found.",
+        });
+      }
+  
+      // Find the topic within the course
+      const topics = course.topics as ITopic[];
+      const topic = topics.find((t: any) => t._id.toString() === topicId);
+      if (!topic) {
+        return res.status(404).json({
+          success: false,
+          message: "Topic not found in the course.",
+        });
+      }
+  
+      // Find the subtopic within the topic
+      const subtopicEntries = topic.subtopics as ISubtopic[];
+      const subtopicEntry = subtopicEntries.find((s: ISubtopic) => s._id.toString() === subtopic.subtopicId);
+      if (!subtopicEntry) {
+        return res.status(404).json({
+          success: false,
+          message: "Subtopic not found in the topic.",
+        });
+      }
+  
+      // Find the subtopic document to update it
+      const Subtopic = mongoose.model('Subtopic');
+      const subtopicDoc = await Subtopic.findById(subtopic.subtopicId);
+      if (!subtopicDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Subtopic document not found.",
+        });
+      }
+  
+      // Create a new Assessment document
+      const Assessment = mongoose.model('assessments');
+      const newAssessment = new Assessment({
+        subtopic: subtopic.subtopicId,
+        course: courseId,
+        assessments_title: assessmentData.title, // Keep assessments_title for database
+        description: assessmentData.description,
+      });
+      await newAssessment.save();
+  
+      // Push the ObjectId of the new Assessment into subtopicDoc.assessments
+      if (!subtopicDoc.assessments) {
+        subtopicDoc.assessments = [];
+      }
+      subtopicDoc.assessments.push(newAssessment._id);
+  
+      // Save the updated subtopic
+      await subtopicDoc.save();
+  
+      // Populate the assessments to return the full data
+      const updatedSubtopic = await Subtopic.findById(subtopic.subtopicId).populate('assessments');
+      const assessments = updatedSubtopic?.assessments || [];
+  
+      // Transform the assessments array to rename assessments_title to title
+      const transformedAssessments = assessments.map((assessment: any) => ({
+        ...assessment._doc, // Spread the document fields
+        title: assessment.assessments_title, // Map assessments_title to title
+        assessments_title: undefined, // Remove the original assessments_title field
+      }));
+  
+      return res.status(200).json({
+        success: true,
+        message: "Assessment saved successfully.",
+        data: transformedAssessments,
+      });
+    } catch (error) {
+      console.error("Error saving assessment:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Server error while saving assessment.",
+      });
+    }
+  };
+  
+  export { saveCourseAssessments };
+
+// Controller to handle saving a single assessment for a subtopic
+// const saveCourseAssessments = async (req: Request, res: Response) => {
+//   try {
+//     const { courseId, topicId, subtopics } = req.body;
+// console.log("entrin in save-CourseAssessments------>")
+//     // Validate request body
+//     if (!courseId || !topicId || !subtopics || !Array.isArray(subtopics) || subtopics.length !== 1) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid request body. Expected courseId, topicId, and a single subtopic.",
+//       });
+//     }
+
+//     const subtopic = subtopics[0];
+//     if (!subtopic.subtopicId || !subtopic.assessments || !Array.isArray(subtopic.assessments) || subtopic.assessments.length !== 1) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid subtopic data. Expected subtopicId and exactly one assessment.",
+//       });
+//     }
+
+//     // Validate the single assessment
+//     const assessmentData = subtopic.assessments[0];
+//     if (!assessmentData.title || typeof assessmentData.title !== "string") {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Assessment must have a title (string).",
+//       });
+//     }
+//     if (assessmentData.description && typeof assessmentData.description !== "string") {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Assessment description must be a string if provided.",
+//       });
+//     }
+
+//     // Find the course and populate topics and subtopics
+//     const course = await courseModel.findById(courseId)
+//       .populate({
+//         path: 'topics',
+//         populate: {
+//           path: 'subtopics',
+//           model: 'Subtopic',
+//         },
+//       }) as ICourse;
+
+//     if (!course) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Course not found.",
+//       });
+//     }
+
+//     // Find the topic within the course
+//     const topics = course.topics as ITopic[];
+//     const topic = topics.find((t: any) => t._id.toString() === topicId);
+//     if (!topic) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Topic not found in the course.",
+//       });
+//     }
+
+//     // Find the subtopic within the topic
+//     const subtopicEntries = topic.subtopics as ISubtopic[];
+//     const subtopicEntry = subtopicEntries.find((s: ISubtopic) => s._id.toString() === subtopic.subtopicId);
+//     if (!subtopicEntry) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Subtopic not found in the topic.",
+//       });
+//     }
+
+//     // Find the subtopic document to update it
+//     const Subtopic = mongoose.model('Subtopic');
+//     const subtopicDoc = await Subtopic.findById(subtopic.subtopicId);
+//     if (!subtopicDoc) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Subtopic document not found.",
+//       });
+//     }
+
+//     // Create a new Assessment document
+//     const Assessment = mongoose.model('assessments');
+//     const newAssessment = new Assessment({
+//       subtopic: subtopic.subtopicId,
+//       course: courseId,
+//       assessments_title: assessmentData.title,
+//       description: assessmentData.description,
+//     });
+//     await newAssessment.save();
+
+//     // Push the ObjectId of the new Assessment into subtopicDoc.assessments
+//     if (!subtopicDoc.assessments) {
+//       subtopicDoc.assessments = [];
+//     }
+//     subtopicDoc.assessments.push(newAssessment._id);
+
+//     // Save the updated subtopic
+//     await subtopicDoc.save();
+
+//     // Populate the assessments to return the full data
+//     const updatedSubtopic = await Subtopic.findById(subtopic.subtopicId).populate('assessments');
+//     const assessments = updatedSubtopic?.assessments || [];
+    
+//     return res.status(200).json({
+//       success: true,
+//       message: "Assessment saved successfully.",
+//       data: assessments,
+//     });
+//   } catch (error) {
+//     console.error("Error saving assessment:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error while saving assessment.",
+//     });
+//   }
+// };
+
+// export { saveCourseAssessments };
+
+
+
+
+
+
+// Create Assessmentv--> ye logic intial ass create be kreaga or uska baad kuch or ass add krna hai vo be
+export const createCourseAssessments = asyncHandler(async (req: Request, res: Response) => {
+    const { courseId, topicId, subtopics } = req.body;
+    const adminId = req.user?._id;
+
+    if (!adminId) {
+        throw new ApiError(401, 'Unauthorized access');
+    }
+
+    // Verify course exists and belongs to admin
+    const course = await CourseModel.findOne({
+        _id: courseId
+    });
+
+    if (!course) {
+        throw new ApiError(404, 'Course not found');
+    }
+
+    // Verify topic exists and belongs to course
+    const topic = await TopicModel.findOne({
+        _id: topicId,
+        course: courseId
+    });
+
+    if (!topic) {
+        throw new ApiError(404, 'Topic not found');
+    }
+
+    const session = await startSession();
+    let createdAssessments: any[] = [];
+
+    try {
+        await session.withTransaction(async () => {
+            // Process each subtopic
+            for (const subtopicData of subtopics) {
+                // Verify subtopic exists and belongs to topic
+                const subtopic = await SubtopicModel.findOne({
+                    _id: subtopicData.subtopicId,
+                    topic: topicId
+                });
+
+                if (!subtopic) {
+                    throw new ApiError(404, `Subtopic ${subtopicData?.order} not belongs to topic ${topicId}`);
+                }
+
+                let assessmentOrder = 1;
+                // Process each assessment in the subtopic
+                for (const assessment of subtopicData.assessments) {
+                    console.log("assessment-->", assessment)
+                    if(assessment.questions.length === 0){
+                        throw new ApiError(400, 'Questions are required');
+                    }
+                    // First create the assessment
+                    const newAssessment = await assessmentsModel.create([{
+                        assessments_title: assessment.title,
+                        description: assessment.description, //  added this description
+                        order: assessment.order || assessmentOrder,
+                        course: courseId,
+                        topic: topicId,
+                        subtopic: subtopicData.subtopicId,
+                        questions: [] // Initialize empty questions array
+                    }], { session });
+
+                    // Then create questions with reference to the assessment
+                    const createdQuestions = await Promise.all(
+                        assessment.questions.map(async (question:any,index:number) => {
+                            return await QuestionModel.create([{
+                                assessmentsId: newAssessment[0]._id,
+                                questionText: question.questionText,
+                                questionType: question.questionType,
+                                options: question.options?.map((opt:any) => ({
+                                    value: opt.trim(),
+                                    label: opt.trim()
+                                })),
+                                correctAnswers: question.correctAnswer ? [question.correctAnswer] : undefined,
+                                sampleAnswer: question.sampleAnswer,
+                                instructions: question.instructions,
+                                order: question.order || index + 1
+                            }], { session });
+                        })
+                    );
+
+                    // Update the assessment with question references
+                    const updatedAssessment : any = await assessmentsModel.findByIdAndUpdate(
+                        newAssessment[0]._id,
+                        {
+                            $set: {
+                                questions: createdQuestions.map(q => q[0]._id)
+                            }
+                        },
+                        { new: true, session }
+                    );
+
+                    if (!updatedAssessment) {
+                        throw new ApiError(500, 'Failed to update assessment');
+                    }
+
+                    createdAssessments.push(updatedAssessment);
+
+                    // Update the subtopic with the new assessment ID
+                    await SubtopicModel.findByIdAndUpdate(
+                        subtopicData.subtopicId,
+                        {
+                            $push: { assessments: updatedAssessment._id }
+                        },
+                        { session }
+                    );
+
+                    assessmentOrder++;
+                }
+            }
+        });
+
+        // Populate the assessments with their questions for the response
+        const populatedAssessments = await assessmentsModel.find({
+            _id: { $in: createdAssessments.map(a => a._id) }
+        }).populate('questions');
+
+        return new ApiResponse(201, {
+            assessments: populatedAssessments?.map((assessment:any) => ({
+                _id: assessment._id,
+                title: assessment.assessments_title,
+                description: assessment.description, // Add this description line
+                subtopic: assessment.subtopic,
+                questions: assessment.questions.map((q:any) => ({
+                    _id: q._id,
+                    questionText: q.questionText ,
+                    questionType: q.questionType,
+                    options: q.options,
+                    correctAnswers: q.correctAnswers,
+                    sampleAnswer: q.sampleAnswer,
+                    instructions: q.instructions
+                }))
+            }))
+        }, 'Course assessments created successfully').send(res);
+
+    } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        throw error;
+    } finally {
+        session.endSession();
+    }
+});
+
+
+
+
+
+// Delete Assessment
+export const deleteAssessment = asyncHandler(async (req: Request, res: Response) => {
+    const { assessmentId,subtopicId } = req.body;
+    const adminId = req.user?._id;
+
+    if (!adminId) {
+        throw new ApiError(401, 'Unauthorized access');
+    }
+
+    const assessment = await assessmentsModel.findOne({
+        _id: assessmentId,
+        subtopic: subtopicId
+    });
+
+    if (!assessment) {
+        throw new ApiError(404, 'Assessment not found');
+    }
+
+
+    // Delete all questions first
+    await QuestionModel.deleteMany({ assessmentsId: assessmentId });
+
+    await SubtopicModel.updateOne(
+        { _id: subtopicId },
+        { $pull: { assessments: assessmentId } }
+    );
+
+    // Delete the assessment
+    await assessmentsModel.findByIdAndDelete(assessmentId);
+
+    return new ApiResponse(200, null, 'Assessment deleted successfully').send(res);
+});
+
+
+
+//adding a new controller to add question
+export const createQuestion = asyncHandler(async (req: Request, res: Response) => {
+    console.log("Question Payload received from frontend:", req.body); 
+
+    const { assessmentId, questionText, options, correctAnswer, questionType = "mcq" } = req.body;
+
+
+  if (!assessmentId || 
+        !questionText || 
+        !Array.isArray(options) || 
+        options.length < 2 || !Array.isArray(correctAnswer) ||
+        correctAnswer.length < 1) {
+        
+        throw new ApiError(400, "Missing or invalid question fields");
+  } 
+
+  // Ensure the assessment exists
+  const assessment = await assessmentsModel.findById(assessmentId);
+  if (!assessment) {
+    throw new ApiError(404, "Assessment not found");
+  }
+
+  // Format options correctly
+  const formattedOptions = options.map((opt: any) => ({
+    value: opt.value?.trim(),
+    label: opt.label?.trim(),
+  }));
+
+  // Trimming correct answers
+  const formattedCorrectAnswers = correctAnswer.map((ans: string) => ans.trim());
+
+
+  // Create the question
+  const newQuestion = await QuestionModel.create({
+    assessmentsId: assessmentId,
+    questionText,
+    questionType,
+    options: formattedOptions,
+    correctAnswers: formattedCorrectAnswers,
+  });
+
+  // Adding question ID to the assessment
+  assessment.questions.push(newQuestion._id);
+  await assessment.save();
+
+  return new ApiResponse(201, {
+    question: newQuestion,
+  }, "Question created successfully").send(res);
+});
+
+//controller to fetch questions based on assessmentId   
+export const getQuestionsByAssessment = asyncHandler(async (req: Request, res: Response) => {
+  const { assessmentId } = req.params;
+
+  if (!assessmentId) {
+    throw new ApiError(400, "Assessment ID is required");
+  }
+
+  const questions = await QuestionModel.find({ assessmentsId: assessmentId });
+
+  return new ApiResponse(200, { questions }, "Questions fetched successfully").send(res);
+});
+
+
+//controller to fetch questions for students(employee)
+export const getQuestionsForStudent = asyncHandler(async (req: Request, res: Response) => {
+  const { assessmentId } = req.params;
+
+  if (!assessmentId) {
+    return res.status(400).json({ message: "Assessment ID is required" });
+  }
+
+  const questions = await QuestionModel.find({ assessmentId });
+
+  // Filtering out admin-only fields (e.g. correctAnswer etc.)
+  const sanitizedQuestions = questions.map((q) => ({
+    _id: q._id,
+    questionText: q.questionText,
+    questionType: q.questionType,
+    options: q.options,
+    
+  }));
+
+  return res.status(200).json({ questions: sanitizedQuestions });
+});
+
+
+
+
+// Controller to delete a question by questionId
+export const deleteQuestionById = asyncHandler(async (req: Request, res: Response) => {
+  const { questionId } = req.body;
+
+  if (!questionId) {
+    throw new ApiError(400, "Question ID is required");
+  }
+
+  const deleted = await QuestionModel.findByIdAndDelete(questionId);
+
+  if (!deleted) {
+    throw new ApiError(404, "Question not found or already deleted");
+  }
+
+  return new ApiResponse(200, null, "Question deleted successfully").send(res);
+});
+
+
+// Controller to get a question by questionId
+export const getQuestionById = asyncHandler(async (req: Request, res: Response) => {
+  const { questionId } = req.body;
+
+  if (!questionId) {
+    throw new ApiError(400, "Question ID is required");
+  }
+
+  const question = await QuestionModel.findById(questionId);
+
+  if (!question) {
+    throw new ApiError(404, "Question not found");
+  }
+
+  return new ApiResponse(200, { question }, "Question fetched successfully").send(res);
+});
+
+//controller to update assessment details.
+export const editAssessment = asyncHandler(async (req: Request, res: Response) => {
+  const { courseId } = req.params;
+  const { assessmentId, title, description } = req.body;
+
+  console.log("Edit Assessment Payload:", req.body);
+
+  if (!assessmentId || !title || !description) {
+    throw new ApiError(400, "Missing required fields: assessmentId, title or description");
+  }
+
+  const assessment = await assessmentsModel.findOne({ _id: assessmentId,course: courseId });
+
+  if (!assessment) {
+    throw new ApiError(404, "Assessment not found for this course");
+  }
+
+  assessment.assessments_title = title;
+  assessment.description = description;
+
+  await assessment.save();
+
+  return new ApiResponse(200, { assessment }, "Assessment updated successfully").send(res);
+});
+
+// Controller to UPDATE a question by questionId
+/*
+export const updateQuestion = asyncHandler(async (req: Request, res: Response) => {
+  console.log(" Received update payload:", req.body);
+
+  const { questionId, updatedData } = req.body;
+
+  if (!questionId) {
+    return res.status(400).json({ message: "Question ID is required" });
+  }
+
+  // Strip _id from options array if present
+  if (updatedData.options) {
+    updatedData.options = updatedData.options.map((opt: any) => ({
+      value: opt.value,
+      label: opt.label,
+    }));
+  }
+
+  const updated = await QuestionModel.findByIdAndUpdate(questionId, updatedData, { new: true });
+  console.log(" Updated question in DB:", updated);
+
+
+  if (!updated) {
+    return res.status(404).json({ message: "Question not found" });
+  }
+
+  res.status(200).json({ message: "Question updated", question: updated });
+});
+*/
+
+export const updateQuestion = asyncHandler(async (req: Request, res: Response) => {
+  console.log(" Received updated payload:", req.body);
+
+  const {
+    questionId,
+    questionText,
+    questionType,
+    options,
+    correctAnswer,
+    sampleAnswer,
+    instructions
+  } = req.body;
+
+  if (!questionId) {
+    return res.status(400).json({ message: "Question ID is required" });
+  }
+
+  const cleanedOptions = options?.map((opt: any) => ({
+    value: opt.value,
+    label: opt.label
+  }));
+
+  const updated = await QuestionModel.findByIdAndUpdate(
+    questionId,
+    {
+      questionText,
+      questionType,
+      options: cleanedOptions,
+      correctAnswers: correctAnswer, // map it here to match your schema
+      sampleAnswer,
+      instructions
+    },
+    { new: true }
+  );
+
+  console.log(" Updated question in DB:", updated);
+
+  if (!updated) {
+    return res.status(404).json({ message: "Question not found" });
+  }
+
+  res.status(200).json({ message: "Question updated", question: updated });
+});
+
+
+//if i create a assigment , definatly have one question in it
+//every req main saare q ki id honi chaiye-> other wise jo id nhi hai vo q delete ho jayegi
+//c-1 add a new question -> send new q data jo ki without id hoga & old q ids -> done
+//c-2 update a question -> send old q id & new q data jo update krwani hai -> done
+//c-3 delete a question -> remove q id from array, array contain id of q that are present in that assessment -> done
+//c-4 update & add both -> send old q id with data jo update krwani hai & new q data jo add krwani hai -> done
+
+// Update Assessment
+export const updateAssessment = asyncHandler(async (req: Request, res: Response) => {
+    const { assessmentId } = req.body;
+    const { title, order, questions } = req.body;
+    const adminId = req.user?._id;
+
+    if (!adminId) {
+        throw new ApiError(401, 'Unauthorized access');
+    }
+
+    // Verify assessment exists
+    const assessment = await assessmentsModel.findById(assessmentId);
+    if (!assessment) {
+        throw new ApiError(404, 'Assessment not found');
+    }
+
+    const session = await startSession();
+    try {
+        await session.withTransaction(async () => {
+            // Update assessment metadata if provided
+            if (title || order) {
+                const updateFields: any = {};
+                if (title) updateFields.assessments_title = title;
+                if (order) updateFields.order = order;
+
+                await assessmentsModel.findByIdAndUpdate(
+                    assessmentId,
+                    { $set: updateFields },
+                    { session }
+                );
+            }
+
+            // Handle questions if provided
+            if (questions && Array.isArray(questions)) {
+                // Get existing questions
+                const existingQuestions = await QuestionModel.find({ assessmentsId: assessmentId }, '_id').session(session);
+                const existingQuestionIds = existingQuestions.map(q => q._id.toString());
+
+                // Process each question
+                const updatedQuestionIds: string[] = [];
+                
+                for (const question of questions) {
+                    if (question.questionId) {
+                        // Update existing question
+                        const updatedQuestion = await QuestionModel.findByIdAndUpdate(
+                            question.questionId,
+                            {
+                                $set: {
+                                    questionText: question.questionText,
+                                    questionType: question.questionType,
+                                    options: question.options?.map((opt: any) => ({
+                                        value: opt.trim(),
+                                        label: opt.trim()
+                                    })),
+                                    correctAnswers: question.correctAnswer ? [question.correctAnswer] : undefined,
+                                    sampleAnswer: question.sampleAnswer,
+                                    instructions: question.instructions,
+                                    order: question.order
+                                }
+                            },
+                            { new: true, session }
+                        );
+
+                        if (updatedQuestion) {
+                            updatedQuestionIds.push(updatedQuestion._id.toString());
+                        }
+                    } else {
+                        // Create new question
+                        const newQuestion = await QuestionModel.create([{
+                            assessmentsId: assessmentId,
+                            questionText: question.questionText,
+                            questionType: question.questionType,
+                            options: question.options?.map((opt: any) => ({
+                                value: opt.trim(),
+                                label: opt.trim()
+                            })),
+                            correctAnswers: question.correctAnswer ? [question.correctAnswer] : undefined,
+                            sampleAnswer: question.sampleAnswer,
+                            instructions: question.instructions,
+                            order: question.order
+                        }], { session });
+
+                        updatedQuestionIds.push(newQuestion[0]._id.toString());
+                    }
+                }
+
+                // Delete questions that were removed
+                const questionsToDelete = existingQuestionIds.filter(id => !updatedQuestionIds.includes(id));
+                if (questionsToDelete.length > 0) {
+                    await QuestionModel.deleteMany(
+                        { _id: { $in: questionsToDelete } },
+                        { session }
+                    );
+                }
+
+                // Update assessment with new question references
+                await assessmentsModel.findByIdAndUpdate(
+                    assessmentId,
+                    { $set: { questions: updatedQuestionIds } },
+                    { session }
+                );
+            }
+        });
+
+
+
+        // Fetch updated assessment with populated questions
+        const updatedAssessment = await assessmentsModel.findById(assessmentId)
+            .populate('questions')
+            .lean();
+
+        if (!updatedAssessment) {
+            throw new ApiError(500, 'Failed to fetch updated assessment');
+        }
+
+        return new ApiResponse(200, {
+            assessment: {
+                _id: updatedAssessment._id,
+                title: updatedAssessment.assessments_title,
+                order: updatedAssessment.order,
+                questions: updatedAssessment.questions.map((q: any) => ({
+                    _id: q._id,
+                    questionText: q.questionText,
+                    questionType: q.questionType,
+                    options: q.options,
+                    correctAnswers: q.correctAnswers,
+                    sampleAnswer: q.sampleAnswer,
+                    instructions: q.instructions,
+                    order: q.order
+                }))
+            }
+        }, 'Assessment updated successfully').send(res);
+
+    } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        throw error;
+    } finally {
+        session.endSession();
+    }
+});
+
+
+
+
+
+//get singleassessment details
+export const getAssessmentWithUserAnswers = asyncHandler(async (req: Request, res: Response) => {
+    const { assessmentId } = req.body;
+    const userId = req.user?._id;
+
+    const assessment = await assessmentsModel.findById(assessmentId).populate('questions');
+    if (!assessment) {
+        throw new ApiError(404, 'Assessment not found');
+    }
+
+    const userAnswers = await userAnswerModel.find({ userId, assessmentId });
+
+    const answersMap: { [key: string]: any } = {};
+    userAnswers.forEach((ans:any) => {
+        answersMap[ans.questionId.toString()] = ans;
+    });
+
+    const questionsWithAnswers = assessment.questions.map((q:any) => ({
+        _id: q._id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        instructions: q.instructions,
+        userAnswer: answersMap[q._id.toString()] ? answersMap[q._id.toString()].answer : null,
+        isCorrect: answersMap[q._id.toString()] ? answersMap[q._id.toString()].isCorrect : null
+    }));
+
+    return new ApiResponse(200, {
+        assessment: {
+            _id: assessment._id,
+            title: assessment.assessments_title,
+            questions: questionsWithAnswers
+        }
+    }, 'Assessment fetched successfully').send(res);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+////--------------------------------------------------------------------
+
+// export const createAssessment = asyncHandler(async (req: Request, res: Response) => {
+
+//     const { subtopicId, questions,courseId,title,order } = req.body ;
+//     const adminId = req.user?._id;
+
+//     if (!adminId) {
+//         throw new ApiError(401, 'Unauthorized access');
+//     }
+
+//     if (!subtopicId || !questions || !Array.isArray(questions) || questions.length === 0) {
+//         throw new ApiError(400, 'Subtopic ID and questions are required');
+//     }
+
+//     if(!Types.ObjectId.isValid(subtopicId)){
+//         throw new ApiError(400, 'Invalid subtopic ID');
+//     }
+
+   
+
+//     // Create questions first
+//     const createdQuestions = await Promise.all(questions.map(async (question:any,index:number) => {
+//         return await QuestionModel.create({
+//             questionText: question.questionText.trim(),
+//             questionType: question.questionType,
+//             options: question.options?.map((opt:any) => ({
+//                 value: opt.value.trim(),
+//                 label: opt.label.trim()
+//             })),
+//             correctAnswers: question.correctAnswers,
+//             sampleAnswer: question.sampleAnswer?.trim(),
+//             instructions: question.instructions?.trim(),
+//             order: question.order || index + 1
+//         });
+//     }));
+
+//     // Create assessment with question references
+//     const newAssessment = await assessmentsModel.create({
+//         assessments_title: title,
+//         subtopic: subtopicId,
+//         course: courseId,
+//         order: order,
+//         questions: createdQuestions.map(q => q._id)
+//     });
+
+//     return new ApiResponse(201, {
+//         assessment: {
+//             _id: newAssessment._id,
+//             assessments_title: newAssessment.assessments_title,
+//             course: newAssessment.course,
+//             subtopic: newAssessment.subtopic,
+//             order: newAssessment.order,
+//             questions: createdQuestions.map(q => ({
+//                 _id: q._id,
+//                 questionText: q.questionText,
+//                 questionType: q.questionType,
+//                 options: q.options,
+//                 correctAnswers: q.correctAnswers,
+//                 sampleAnswer: q.sampleAnswer,
+//                 instructions: q.instructions
+//             }))
+//         }
+//     }, 'Assessment created successfully').send(res);
+// });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // Get Assessment Details
+// export const getAssessmentDetails = asyncHandler(async (req: Request, res: Response) => {
+//     const { assessmentId } = req.params;
+//     const adminId = req.user?._id;
+
+//     if (!adminId) {
+//         throw new ApiError(401, 'Unauthorized access');
+//     }
+
+//     const assessment = await assessmentsModel.findOne({
+//         _id: assessmentId,
+//         course: { 
+//             $in: await CourseModel.find({
+//                 'linked_entities.organization': { 
+//                     $in: await OrganizationModel.find({ admin: adminId }).distinct('_id') 
+//                 }
+//             }).distinct('_id')
+//         }
+//     }).populate('questions');
+
+//     if (!assessment) {
+//         throw new ApiError(404, 'Assessment not found');
+//     }
+
+//     return new ApiResponse(200, {
+//         assessment: {
+//             _id: assessment._id,
+//             course: assessment.course,
+//             subtopic: assessment.subtopic,
+//             questions: assessment.questions.map(q => ({
+//                 _id: q._id,
+//                 questionText: q.questionText,
+//                 questionType: q.questionType,
+//                 options: q.options,
+//                 correctAnswers: q.correctAnswers,
+//                 sampleAnswer: q.sampleAnswer,
+//                 instructions: q.instructions
+//             }))
+//         }
+//     }, 'Assessment details fetched successfully').send(res);
+// });
+
+
+
+
+// interface IAssessmentInput {
+//     courseId: string;
+//     topicId: string;
+//     subtopics: {
+//         subtopicId: string;
+//         assessments: {
+//             title: string;
+//             questions: {
+//                 questionType: 'multiple_choice' | 'descriptive' | 'video' | 'audio';
+//                 questionText: string;
+//                 options?: string[];
+//                 correctAnswer?: string;
+//                 sampleAnswer?: string;
+//                 instructions?: string;
+//             }[];
+//         }[];
+//     }[];
+// }
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+//////////////////
+// export const createCourseAssessments = asyncHandler(async (req: Request, res: Response) => {
+//     const { courseId, topicId, subtopics } = req.body as IAssessmentInput;
+//     const adminId = req.user?._id;
+
+//     if (!adminId) {
+//         throw new ApiError(401, 'Unauthorized access');
+//     }
+
+//     const course = await CourseModel.findOne({ _id: courseId });
+//     if (!course) {
+//         throw new ApiError(404, 'Course not found');
+//     }
+
+//     const topic = await TopicModel.findOne({ _id: topicId, course: courseId });
+//     if (!topic) {
+//         throw new ApiError(404, 'Topic not found');
+//     }
+
+//     const session = await startSession();
+//     let createdAssessments: any[] = [];
+//     const errors: { subtopicId: string; assessmentTitle: string; message: string }[] = [];
+
+//     try {
+//         await session.withTransaction(async () => {
+//             for (const subtopicData of subtopics) {
+//                 const subtopic = await SubtopicModel.findOne({ _id: subtopicData.subtopicId, topic: topicId });
+//                 if (!subtopic) {
+//                     errors.push({
+//                         subtopicId: subtopicData.subtopicId,
+//                         assessmentTitle: '',
+//                         message: `Subtopic ${subtopicData.subtopicId} not found`
+//                     });
+//                     continue;
+//                 }
+
+//                 for (const assessment of subtopicData.assessments) {
+//                     try {
+//                         // Create the assessment
+//                         const newAssessment = await assessmentsModel.create([{
+//                             assessments_title: assessment.title,
+//                             course: courseId,
+//                             topic: topicId,
+//                             subtopic: subtopicData.subtopicId,
+//                             questions: []
+//                         }], { session });
+
+//                         // Prepare questions and bulk insert
+//                         const questionsToInsert = assessment.questions.map((question) => ({
+//                             assessmentsId: newAssessment[0]._id,
+//                             questionText: question.questionText,
+//                             questionType: question.questionType,
+//                             options: question.options?.map(opt => ({ value: opt.trim(), label: opt.trim() })),
+//                             correctAnswers: question.correctAnswer ? [question.correctAnswer] : undefined,
+//                             sampleAnswer: question.sampleAnswer,
+//                             instructions: question.instructions
+//                         }));
+
+//                         const createdQuestions = await QuestionModel.insertMany(questionsToInsert, { session });
+
+//                         // Link questions to assessment
+//                         const updatedAssessment = await assessmentsModel.findByIdAndUpdate(
+//                             newAssessment[0]._id,
+//                             { $set: { questions: createdQuestions.map(q => q._id) } },
+//                             { new: true, session }
+//                         );
+
+//                         if (updatedAssessment) {
+//                             createdAssessments.push(updatedAssessment);
+
+//                             // Update subtopic with assessment ID
+//                             await SubtopicModel.findByIdAndUpdate(
+//                                 subtopicData.subtopicId,
+//                                 { $push: { assessments: updatedAssessment._id } },
+//                                 { session }
+//                             );
+//                         } else {
+//                             errors.push({
+//                                 subtopicId: subtopicData.subtopicId,
+//                                 assessmentTitle: assessment.title,
+//                                 message: 'Failed to update assessment with questions'
+//                             });
+//                         }
+//                     } catch (err: any) {
+//                         errors.push({
+//                             subtopicId: subtopicData.subtopicId,
+//                             assessmentTitle: assessment.title,
+//                             message: err.message || 'Failed to create assessment or questions'
+//                         });
+//                     }
+//                 }
+//             }
+//         });
+
+//         // Populate the assessments with their questions for the response
+//         const populatedAssessments = await assessmentsModel.find({
+//             _id: { $in: createdAssessments.map(a => a._id) }
+//         }).populate<{ questions: IQuestion[] }>('questions');
+
+//         return new ApiResponse(201, {
+//             success: true,
+//             assessments: populatedAssessments.map(assessment => ({
+//                 _id: assessment._id,
+//                 title: assessment.assessments_title,
+//                 course: assessment.course,
+//                 subtopic: assessment.subtopic,
+//                 questions: assessment.questions.map(q => ({
+//                     _id: q._id,
+//                     questionText: q.questionText,
+//                     questionType: q.questionType,
+//                     options: q.options,
+//                     correctAnswers: q.correctAnswers,
+//                     sampleAnswer: q.sampleAnswer,
+//                     instructions: q.instructions
+//                 }))
+//             })),
+//             errors // return partial errors to frontend
+//         }, 'Course assessments processed successfully').send(res);
+
+//     } catch (error) {
+//         if (session.inTransaction()) {
+//             await session.abortTransaction();
+//         }
+//         throw error;
+//     } finally {
+//         session.endSession();
+//     }
+// });
