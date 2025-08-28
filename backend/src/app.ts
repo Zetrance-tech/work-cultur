@@ -145,7 +145,7 @@ async function callAzureTTS(text: string, sessionId: string): Promise<{
     };
     
     const ssml = `
-      <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+      <speak version="1.0" xmlns="https://www.w3.org/2001/10/synthesis"
         xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
         <voice name="${speechConfig.speechSynthesisVoiceName}">
           <mstts:viseme type="FacialExpression"/>
@@ -223,7 +223,7 @@ app.post('/api/v1/process-query', async (req: Request, res: Response) => {
         audioPath: ttsResult.audioPath,
         audioFileName: ttsResult.audioFileName,
         duration: ttsResult.duration,
-         audioUrl: `http://localhost:5000/audio/${ttsResult.audioFileName}` //replace with host backend url
+         audioUrl: `https://localhost:5000/audio/${ttsResult.audioFileName}` //replace with host backend url
       },
       visemeData: ttsResult.visemeData,
       timestamp: new Date().toISOString(),
