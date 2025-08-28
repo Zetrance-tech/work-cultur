@@ -22,7 +22,7 @@ export const textToSpeech = async (text: string, options: ConvertToSpeechOptions
     const synthesizer = new sdk.SpeechSynthesizer(speechConfig);
 
     const ssml = `
-      <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-IN'>
+      <speak version='1.0' xmlns='https://www.w3.org/2001/10/synthesis' xml:lang='en-IN'>
         <voice name='en-IN-KunalNeural'>${text}</voice>
       </speak>`;
 
