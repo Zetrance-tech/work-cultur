@@ -145,7 +145,7 @@ async function callAzureTTS(text: string, sessionId: string): Promise<{
     };
     
     const ssml = `
-      <speak version="1.0" xmlns="https://www.w3.org/2001/10/synthesis"
+      <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
         xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
         <voice name="${speechConfig.speechSynthesisVoiceName}">
           <mstts:viseme type="FacialExpression"/>
@@ -223,7 +223,7 @@ app.post('/api/v1/process-query', async (req: Request, res: Response) => {
         audioPath: ttsResult.audioPath,
         audioFileName: ttsResult.audioFileName,
         duration: ttsResult.duration,
-         audioUrl: `https://localhost:5000/audio/${ttsResult.audioFileName}` //replace with host backend url
+        audioUrl: getAudioUrl(ttsResult.audioFileName) // Dynamic HTTPS for development
       },
       visemeData: ttsResult.visemeData,
       timestamp: new Date().toISOString(),
@@ -248,6 +248,15 @@ app.post('/api/v1/process-query', async (req: Request, res: Response) => {
 
 // Routes
 routes(app);
+
+// Helper function to get the correct audio URL protocol
+function getAudioUrl(audioFileName: string): string {
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  const protocol = isDevelopment ? 'https://' : 'http://';
+  const port = process.env.PORT || '5000';
+  const host = isDevelopment ? 'localhost' : (process.env.BACKEND_HOST || 'localhost');
+  return `${protocol}${host}:${port}/audio/${audioFileName}`;
+}
 
 app.use('/audio', express.static(outputDir));
 
