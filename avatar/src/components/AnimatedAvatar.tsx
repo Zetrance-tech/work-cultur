@@ -1011,7 +1011,6 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = memo(({
 
   const courseId = useMemo(() => course?.id, [course?.id]);
   const courseAvatarId: string = course?.courseAvatar?.avatarAzureResourcesId;
-  //need to set azureUrl from corseAvatar Id
   const azureUrl = 'https://workcultur.blob.core.windows.net/avatars/avatar-3';
   // const naturalFrame = course?.courseAvatar?.naturalFrame || 80;
   const naturalFrame = 192
@@ -1463,45 +1462,88 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = memo(({
   }, [setChatloading, setIsAvatarSpeaking]);
 
   const playAIAudio = useCallback(async (audioUrl: string, text: string, visemes: VisemeData[]) => {
-    console.log('Playing AI audio', { audioUrl, text, visemesLength: visemes.length });
+    console.log('🔍 AUDIO DEBUG: Starting playAIAudio', {
+      audioUrl: audioUrl.substring(0, 100) + '...',
+      text: text.substring(0, 100) + '...',
+      visemesLength: visemes.length,
+      isMuted,
+      hasUserInteraction: document.visibilityState === 'visible'
+    });
     stopOngoingProcesses();
-    
+
     if (isMuted) {
+      console.log('🔍 AUDIO DEBUG: Audio is muted, skipping playback');
       setIsAvatarSpeaking(true);
       setTimeout(() => setIsAvatarSpeaking(false), 3000);
       return;
     }
 
     try {
+      console.log('🔍 AUDIO DEBUG: Creating audio element');
       const audio = new Audio();
       audioRef.current = audio;
+
+      // Enhanced error tracking
+      audio.addEventListener('loadstart', () => console.log('🔍 AUDIO DEBUG: Audio load started'));
+      audio.addEventListener('loadeddata', () => console.log('🔍 AUDIO DEBUG: Audio data loaded, readyState:', audio.readyState));
+      audio.addEventListener('canplay', () => console.log('🔍 AUDIO DEBUG: Audio can play, duration:', audio.duration));
+      audio.addEventListener('canplaythrough', () => console.log('🔍 AUDIO DEBUG: Audio can play through completely'));
+
       audio.src = audioUrl;
       audio.preload = "auto";
+      console.log('🔍 AUDIO DEBUG: Set audio src and preload, calling load()');
 
-      // Wait for metadata to load
+      // Wait for metadata to load with timeout
       await new Promise((resolve, reject) => {
-        audio.addEventListener('loadedmetadata', resolve, { once: true });
-        audio.addEventListener('error', reject, { once: true });
+        const timeout = setTimeout(() => {
+          reject(new Error('Audio metadata loading timeout after 10 seconds'));
+        }, 10000);
+
+        const onMetadata = () => {
+          clearTimeout(timeout);
+          console.log('🔍 AUDIO DEBUG: Metadata loaded successfully', {
+            duration: audio.duration,
+            readyState: audio.readyState,
+            networkState: audio.networkState
+          });
+          resolve(undefined);
+        };
+
+        const onError = (event: Event) => {
+          clearTimeout(timeout);
+          const audioError = (audio as any).error;
+          console.error('🔍 AUDIO DEBUG: Metadata loading failed', {
+            event,
+            errorCode: audioError?.code,
+            errorMessage: audioError?.message,
+            networkState: audio.networkState,
+            readyState: audio.readyState
+          });
+          reject(new Error(`Audio loading error: ${audioError?.message || 'Unknown error'}`));
+        };
+
+        audio.addEventListener('loadedmetadata', onMetadata, { once: true });
+        audio.addEventListener('error', onError, { once: true });
         audio.load();
       });
-      
-      console.log('Audio metadata loaded, duration:', audio.duration);
-      
+
+      console.log('🔍 AUDIO DEBUG: Building visemes and transitions');
       // Set visemes and build transitions
       setVisemeData(visemes);
       const transitions = buildFrameTransitionData(visemes, audio.duration);
       setFrameTransitionData(transitions);
-      
+
       // Set speaking mode BEFORE playing
       setCurrentEmotion('speaking');
+      console.log('🔍 AUDIO DEBUG: Set speaking mode, preparing to play');
 
       const handlePlay = () => {
-        console.log('Audio started playing');
+        console.log('🔍 AUDIO DEBUG: Audio started playing successfully');
         setIsAvatarSpeaking(true);
       };
 
       const handleEnded = () => {
-        console.log('Audio playback ended');
+        console.log('🔍 AUDIO DEBUG: Audio playback ended naturally');
         setIsAvatarSpeaking(false);
         setCurrentEmotion('neutral');
         setChatloading(false);
@@ -1510,10 +1552,16 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = memo(({
       };
 
       const handleError = (event: Event) => {
-        console.error("Audio playback error:", event);
+        const audioError = (audio as any).error;
+        console.error('🔍 AUDIO DEBUG: Playback error occurred', {
+          errorCode: audioError?.code,
+          errorMessage: audioError?.message,
+          networkState: audio.networkState,
+          readyState: audio.readyState
+        });
         toast({
           title: "Audio Playback Error",
-          description: "Failed to play the AI response audio. Please try again.",
+          description: `Failed to play audio: ${audioError?.message || 'Unknown error'}`,
           variant: "destructive",
         });
         setIsAvatarSpeaking(false);
@@ -1526,8 +1574,41 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = memo(({
       audio.addEventListener('ended', handleEnded);
       audio.addEventListener('error', handleError);
 
-      // Start playback
-      await audio.play();
+      console.log('🔍 AUDIO DEBUG: Attempting to play audio - checking user interaction...');
+      // Check for user interaction before playing
+      try {
+        await audio.play();
+        console.log('🔍 AUDIO DEBUG: Play succeeded');
+      } catch (playError: any) {
+        console.error('🔍 AUDIO DEBUG: Play failed with likely autoplay restriction', {
+          errorName: playError.name,
+          errorMessage: playError.message,
+          errorCode: playError.code,
+          documentVisibility: document.visibilityState,
+          userActivation: document.hasOwnProperty('userActivation') ?
+            (document as any).userActivation?.isActive : 'Not supported',
+          wasInteracted: true // We know user interacted to get here
+        });
+
+        // Handle autoplay restrictions
+        if (playError.name === 'NotAllowedError') {
+          toast({
+            title: "Autoplay Blocked",
+            description: "Browser blocked audio autoplay. Please interact with the page and try again.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Audio Playback Error",
+            description: `Failed to play: ${playError.message}`,
+            variant: "destructive",
+          });
+        }
+        setIsAvatarSpeaking(false);
+        setCurrentEmotion('neutral');
+        setChatloading(false);
+        return;
+      }
 
       // Cleanup function
       return () => {
@@ -1535,11 +1616,19 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = memo(({
         audio.removeEventListener('ended', handleEnded);
         audio.removeEventListener('error', handleError);
       };
-    } catch (error) {
-      console.error("Error playing audio:", error);
+    } catch (error: any) {
+      console.error('🔍 AUDIO DEBUG: Catastrophic error in playAIAudio', {
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        audioUrlValid: audioUrl && audioUrl.startsWith('http'),
+        browserUserAgent: navigator.userAgent,
+        documentVisibility: document.visibilityState
+      });
+
       toast({
         title: "Audio Playback Error",
-        description: "Failed to play the AI response audio. Please try again.",
+        description: error.message || "Failed to play the AI response audio. Please try again.",
         variant: "destructive",
       });
       setIsAvatarSpeaking(false);
