@@ -321,6 +321,9 @@ const Chat = () => {
 
     try {
       setChatloading(true);
+      if(`${import.meta.env.VITE_BACKEND_API_URL}`) {
+        console.log(`our backend url --->${import.meta.env.VITE_BACKEND_API_URL}`)
+      }
       const response = await axios.post<AskAIResponse>(`${import.meta.env.VITE_BACKEND_API_URL}/api/v1/process-query`, {
         query: question,
       });

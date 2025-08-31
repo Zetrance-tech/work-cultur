@@ -251,12 +251,21 @@ routes(app);
 
 // Helper function to get the correct audio URL protocol
 function getAudioUrl(audioFileName: string): string {
-  const isDevelopment = process.env.NODE_ENV !== 'production';
-  const protocol = isDevelopment ? 'https://' : 'http://';
-  const port = process.env.PORT || '5000';
-  const host = isDevelopment ? 'localhost' : (process.env.BACKEND_HOST || 'localhost');
-  return `${protocol}${host}:${port}/audio/${audioFileName}`;
+  const In_Development = process.env.NODE_ENV === "development";
+
+  if (In_Development) {
+    // Local development
+   
+    const port = process.env.PORT || "5000";
+    return `http://localhost:${port}/audio/${audioFileName}`;
+  } else {
+    // Production backend
+
+    const backendHost = process.env.BACKEND_HOST || "wc-backend.zetrance.com";
+    return `https://${backendHost}/audio/${audioFileName}`;
+  }
 }
+
 
 app.use('/audio', express.static(outputDir));
 
