@@ -246,12 +246,12 @@ function getAudioUrl(audioFileName: string): string {
     // Local development
     console.log("working in development mode---->")
     const port = process.env.PORT || "5000";
-    return http://localhost:${port}/audio/${audioFileName};
+    return `http://localhost:${port}/audio/${audioFileName};`
   } else {
     // Production backend
      console.log("working in production mode---->")
     const backendHost = process.env.BACKEND_HOST || "wc-backend.zetrance.com";
-    return https://${backendHost}/audio/${audioFileName};
+    return `https://${backendHost}/audio/${audioFileName};`
   }
 } 
 
