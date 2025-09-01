@@ -15,24 +15,13 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Middleware
-// app.use(cors({
-//     origin: process.env.CORS_ORIGIN,
-//     credentials: true
-// }));
-
 app.use(
   cors({
-    origin: ['http://127.0.0.1:8080',
+    origin: [
              'http://127.0.0.1:5001',
              'http://127.0.0.1:5002',
+             'http://127.0.0.1:5003',
       'https://cdnworkculturendpoint.azureedge.net/workcultur-storage',
-       'http://127.0.0.1:8081',      
-      'http://127.0.0.1:8081',
-      'http://127.0.0.1:5500',
-      'http://127.0.0.1:5001',
-      'http://localhost:8080',
-      'http://localhost:8081',
-      'http://192.168.223.1:8080',
       'https://wc.zetrance.com', //main frontend url
       'https://wc-avatar.zetrance.com' // avatar frontend url
       ],

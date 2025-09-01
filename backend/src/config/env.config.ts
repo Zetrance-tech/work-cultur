@@ -31,7 +31,7 @@ interface EnvConfig {
 const env: EnvConfig = {
     MONGODB_URI: process.env.MONGODB_URI || '',
     PORT: process.env.PORT || '5000',
-    NODE_ENV: process.env.NODE_ENV || 'development',
+    NODE_ENV: process.env.NODE_ENV || '',
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET || 'your-access-token-secret',
     ACCESS_TOKEN_EXPIRY: process.env.ACCESS_TOKEN_EXPIRY || '15m',
     CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
